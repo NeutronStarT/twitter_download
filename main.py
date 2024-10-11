@@ -136,6 +136,11 @@ def print_info(_user_info):
 
 def get_download_url(_user_info):
 
+    def validateTitle(title):
+        rstr = r"[\/\\\:\*\?\"\<\>\|]"  # '/ \ : * ? " < > |'
+        new_title = re.sub(rstr, " ", title)  # 替换为空格
+        return new_title
+
     def get_heighest_video_quality(variants) -> str:   #找到最高质量的视频地址,并返回
 
         if len(variants) == 1:      #gif适配
@@ -171,6 +176,10 @@ def get_download_url(_user_info):
                         a = i[x_label]['itemContent']['tweet_results']['result']['legacy']
                         frr = [a['favorite_count'], a['retweet_count'], a['reply_count']]
                         tweet_msecs = int(i[x_label]['itemContent']['tweet_results']['result']['edit_control']['editable_until_msecs']) - 3600000
+                    twi_user = i[x_label]['itemContent']['tweet_results']['result']['core']['user_results']['result']
+                    twi_user_id = twi_user['rest_id']
+                    twi_user_at_name = twi_user['legacy']['screen_name']
+                    twi_user_name = validateTitle(twi_user['legacy']['name'])
                     timestr = stamp2time(tweet_msecs)
 
                     #我知道这边代码很烂
@@ -179,7 +188,7 @@ def get_download_url(_user_info):
                     _result = time_comparison(tweet_msecs, start_time_stamp, end_time_stamp)
                     if _result[0]:  #符合时间限制
                         if 'extended_entities' in a and 'retweeted_status_result' not in a:
-                            _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{timestr}-vid', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{timestr}-img', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for _media in a['extended_entities']['media']]
+                            _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{twi_user_id}-{twi_user_name}(@{twi_user_at_name})-{timestr}-vid', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{twi_user_id}-{twi_user_name}(@{twi_user_at_name})-{timestr}-img', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for _media in a['extended_entities']['media']]
 
                         
                         elif 'retweeted_status_result' in a and 'extended_entities' in a['retweeted_status_result']['result']['legacy']:    #判断是否为转推,以及是否获取转推
@@ -197,12 +206,16 @@ def get_download_url(_user_info):
                         a = i[x_label]['items'][0]['item']['itemContent']['tweet_results']['result']['legacy']
                         frr = [a['favorite_count'], a['retweet_count'], a['reply_count']]
                         tweet_msecs = int(i[x_label]['items'][0]['item']['itemContent']['tweet_results']['result']['edit_control']['editable_until_msecs']) - 3600000
+                    twi_user = i[x_label]['items'][0]['item']['itemContent']['tweet_results']['result']['core']['user_results']['result']
+                    twi_user_id = twi_user['rest_id']
+                    twi_user_at_name = twi_user['legacy']['screen_name']
+                    twi_user_name = validateTitle(twi_user['legacy']['name'])
                     timestr = stamp2time(tweet_msecs)
 
                     _result = time_comparison(tweet_msecs, start_time_stamp, end_time_stamp)
                     if _result[0]:  #符合时间限制
                         if 'extended_entities' in a:
-                            _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{timestr}-vid', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{timestr}-img', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for _media in a['extended_entities']['media']]
+                            _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{twi_user_id}-{twi_user_name}(@{twi_user_at_name})-{timestr}-vid', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{twi_user_id}-{twi_user_name}(@{twi_user_at_name})-{timestr}-img', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for _media in a['extended_entities']['media']]
                     elif not _result[1]:    #已超出目标时间范围
                         start_label = False
                         break
@@ -287,6 +300,7 @@ def get_download_url(_user_info):
 def download_control(_user_info):
     async def _main():
         async def down_save(url, prefix, csv_info, order: int):
+            orig_url = url
             if '.mp4' in url:
                 _file_name = f'{_user_info.save_path + os.sep}{prefix}_{_user_info.count + order}.mp4'
             else:
@@ -313,6 +327,9 @@ def download_control(_user_info):
 
                     if log_output:
                         print(f'{_file_name}=====>下载完成')
+                    
+                    if down_log:
+                        cache_data.save_cache(orig_url)
             
                     break
                 except Exception as e:
