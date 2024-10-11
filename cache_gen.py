@@ -4,20 +4,17 @@ import pickle
 class cache_gen():
 
     def __init__(self, save_path) -> None:
-        self.cache_path = save_path + os.sep + "cache_data.log"
+        self.cache_path = save_path + os.sep + "cache_data_v2.log"
 
         if os.path.exists(self.cache_path):
-            with open(self.cache_path, 'rb') as f:
-                self.cache_data = pickle.load(f)
+            with open(self.cache_path, 'r') as f:
+                self.cache_data = set(line.strip() for line in f.readlines())
         else:
             self.cache_data = set()
 
-    def __del__(self):
-        with open(self.cache_path, 'wb') as f:
-            pickle.dump(self.cache_data, f)
-
     def add(self, element):
-        self.cache_data.add(element)
+        if element not in self.cache_data:
+            self.cache_data.add(element)
 
     def is_present(self, element):
         if element in self.cache_data:
@@ -25,5 +22,10 @@ class cache_gen():
         else:
             self.add(element)
             return True
-
+    
+    def save_cache(self, element):
+        if element not in self.cache_data:
+            self.cache_data.add(element)
+        with open(self.cache_path, 'a') as f:
+            f.write(element + '\n')
 
