@@ -5,11 +5,13 @@ import httpx
 import asyncio
 import os
 import json
+import twing_url
+import traceback
 from user_info import User_info
 from csv_gen import csv_gen
 from cache_gen import cache_gen
 
-max_concurrent_requests = 8     #最大并发数量，默认为8，对自己网络有自信的可以调高; 遇到多次下载失败时适当降低
+max_concurrent_requests = 1     #最大并发数量，默认为8，对自己网络有自信的可以调高; 遇到多次下载失败时适当降低
 
 def del_special_char(string):
     string = re.sub(r'[^\u4e00-\u9fa5\u0030-\u0039\u0041-\u005a\u0061-\u007a\u3040-\u31FF\.]', '', string)
@@ -17,7 +19,7 @@ def del_special_char(string):
 
 def stamp2time(msecs_stamp:int) -> str:
     timeArray = time.localtime(msecs_stamp/1000)
-    otherStyleTime = time.strftime("%Y-%m-%d %H-%M", timeArray)
+    otherStyleTime = time.strftime("%Y_%m_%d_%H_%M_%S", timeArray)
     return otherStyleTime
 
 def time2stamp(timestr:str) -> int:
@@ -75,7 +77,7 @@ with open('settings.json', 'r', encoding='utf8') as f:
         has_retweet = True
         has_likes = True
         has_highlights = False
-        start_time_stamp = 655028357000   #1990-10-04
+        start_time_stamp = -1
         end_time_stamp = 2548484357000    #2050-10-04
     if settings['has_video']:
         has_video = True
@@ -140,6 +142,12 @@ def get_download_url(_user_info):
         rstr = r"[\/\\\:\*\?\"\<\>\|]"  # '/ \ : * ? " < > |'
         new_title = re.sub(rstr, " ", title)  # 替换为空格
         return new_title
+    
+    def getMediaUrlId(_media):
+        return _media['media_url_https'].split('/')[-1].split('.')[-2]
+    
+    def getMediaTwiId(_media):
+        return _media['url'].split('/')[-1]
 
     def get_heighest_video_quality(variants) -> str:   #找到最高质量的视频地址,并返回
 
@@ -158,6 +166,7 @@ def get_download_url(_user_info):
 
     def get_url_from_content(content):
         global start_label
+        MAX_TAG_LEN = 100
         _photo_lst = []
         if has_retweet or has_highlights:
             x_label = 'content'
@@ -171,16 +180,33 @@ def get_download_url(_user_info):
                     if 'tweet' in i[x_label]['itemContent']['tweet_results']['result']:
                         a = i[x_label]['itemContent']['tweet_results']['result']['tweet']['legacy']       #适配限制回复账号
                         frr = [a['favorite_count'], a['retweet_count'], a['reply_count']]
-                        tweet_msecs = int(i[x_label]['itemContent']['tweet_results']['result']['tweet']['edit_control']['editable_until_msecs']) - 3600000
+                        tweet_msecs_up = i[x_label]['itemContent']['tweet_results']['result']['tweet']['edit_control']
+                        if 'editable_until_msecs' in tweet_msecs_up:
+                            tweet_msecs = int(tweet_msecs_up['editable_until_msecs']) - 3600000
+                        else:
+                            tweet_msecs = int(tweet_msecs_up['edit_control_initial']['editable_until_msecs']) - 3600000
                     else:
                         a = i[x_label]['itemContent']['tweet_results']['result']['legacy']
                         frr = [a['favorite_count'], a['retweet_count'], a['reply_count']]
-                        tweet_msecs = int(i[x_label]['itemContent']['tweet_results']['result']['edit_control']['editable_until_msecs']) - 3600000
-                    twi_user = i[x_label]['itemContent']['tweet_results']['result']['core']['user_results']['result']
-                    twi_user_id = twi_user['rest_id']
+                        tweet_msecs_up = i[x_label]['itemContent']['tweet_results']['result']['edit_control']
+                        if 'editable_until_msecs' in tweet_msecs_up:
+                            tweet_msecs = int(tweet_msecs_up['editable_until_msecs']) - 3600000
+                        else:
+                            tweet_msecs = int(tweet_msecs_up['edit_control_initial']['editable_until_msecs']) - 3600000
+                    
+                    
+                    twi_user = i[x_label]['itemContent']['tweet_results']['result']
+                    if 'core' in twi_user:
+                        twi_user = twi_user['core']['user_results']['result']
+                    else:
+                        twi_user = twi_user['tweet']['core']['user_results']['result']
+                    # twi_user_id = twi_user['rest_id']
                     twi_user_at_name = twi_user['legacy']['screen_name']
                     twi_user_name = validateTitle(twi_user['legacy']['name'])
+                    
                     timestr = stamp2time(tweet_msecs)
+                    
+                    file_name_prefix = f'{twi_user_name}(@{twi_user_at_name})-{timestr}'
 
                     #我知道这边代码很烂
                     #但我实在不想重构 ( º﹃º )
@@ -188,10 +214,21 @@ def get_download_url(_user_info):
                     _result = time_comparison(tweet_msecs, start_time_stamp, end_time_stamp)
                     if _result[0]:  #符合时间限制
                         if 'extended_entities' in a and 'retweeted_status_result' not in a:
-                            _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{twi_user_id}-{twi_user_name}(@{twi_user_at_name})-{timestr}-vid', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{twi_user_id}-{twi_user_name}(@{twi_user_at_name})-{timestr}-img', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for _media in a['extended_entities']['media']]
+                            twi_tags = ''
+                            for tag in a['entities']['hashtags']:
+                                if (len(twi_tags)) == 0:
+                                    twi_tags = '-' 
+                                if len(tag) >= MAX_TAG_LEN:
+                                    break
+                                twi_tags += validateTitle(tag['text']) + ','
+                            if len(twi_tags) > 0 and twi_tags[-1] == ',':
+                                twi_tags = twi_tags[:-1]
+                            
+                            _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{file_name_prefix}-{getMediaTwiId(_media)}_p{a_index}-{getMediaUrlId(_media)}-vid{twi_tags}', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{file_name_prefix}-{getMediaTwiId(_media)}_p{a_index}-{getMediaUrlId(_media)}-img{twi_tags}', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for a_index, _media in enumerate(a['extended_entities']['media'])]
 
                         
                         elif 'retweeted_status_result' in a and 'extended_entities' in a['retweeted_status_result']['result']['legacy']:    #判断是否为转推,以及是否获取转推
+                            
                             _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{timestr}-vid-retweet', [tweet_msecs, a['retweeted_status_result']['result']['core']['user_results']['result']['legacy']['name'], f"@{a['retweeted_status_result']['result']['core']['user_results']['result']['legacy']['screen_name']}", _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['retweeted_status_result']['result']['legacy']['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{timestr}-img-retweet', [tweet_msecs, a['retweeted_status_result']['result']['core']['user_results']['result']['legacy']['name'], f"@{a['retweeted_status_result']['result']['core']['user_results']['result']['legacy']['screen_name']}", _media['expanded_url'], 'Image', _media['media_url_https'], '', a['retweeted_status_result']['result']['legacy']['full_text']] + frr) for _media in a['retweeted_status_result']['result']['legacy']['extended_entities']['media']]
                     elif not _result[1]:    #已超出目标时间范围
                         start_label = False
@@ -206,21 +243,29 @@ def get_download_url(_user_info):
                         a = i[x_label]['items'][0]['item']['itemContent']['tweet_results']['result']['legacy']
                         frr = [a['favorite_count'], a['retweet_count'], a['reply_count']]
                         tweet_msecs = int(i[x_label]['items'][0]['item']['itemContent']['tweet_results']['result']['edit_control']['editable_until_msecs']) - 3600000
-                    twi_user = i[x_label]['items'][0]['item']['itemContent']['tweet_results']['result']['core']['user_results']['result']
-                    twi_user_id = twi_user['rest_id']
+                    
+                    twi_user = i[x_label]['items'][0]['item']['itemContent']['tweet_results']['result']
+                    if 'core' in twi_user:
+                        twi_user = twi_user['core']['user_results']['result']
+                    else:
+                        twi_user = twi_user['tweet']['core']['user_results']['result']
+                    # twi_user_id = twi_user['rest_id']
                     twi_user_at_name = twi_user['legacy']['screen_name']
                     twi_user_name = validateTitle(twi_user['legacy']['name'])
                     timestr = stamp2time(tweet_msecs)
+                    
+                    file_name_prefix = f'{twi_user_name}(@{twi_user_at_name})-{timestr}'
 
                     _result = time_comparison(tweet_msecs, start_time_stamp, end_time_stamp)
                     if _result[0]:  #符合时间限制
                         if 'extended_entities' in a:
-                            _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{twi_user_id}-{twi_user_name}(@{twi_user_at_name})-{timestr}-vid', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{twi_user_id}-{twi_user_name}(@{twi_user_at_name})-{timestr}-img', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for _media in a['extended_entities']['media']]
+                            _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{file_name_prefix}-{getMediaTwiId(_media)}_p{a_index}-{getMediaUrlId(_media)}-vid', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{file_name_prefix}-{getMediaTwiId(_media)}_p{a_index}-{getMediaUrlId(_media)}-img', [tweet_msecs, _user_info.name, f'@{_user_info.screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for a_index, _media in enumerate(a['extended_entities']['media'])]
                     elif not _result[1]:    #已超出目标时间范围
                         start_label = False
                         break
 
             except Exception as e:
+                traceback.print_exc()
                 continue
             if 'cursor-bottom' in i['entryId']:     #更新下一页的请求编号(含转推模式&亮点模式)
                 _user_info.cursor = i['content']['value']
@@ -302,11 +347,13 @@ def download_control(_user_info):
         async def down_save(url, prefix, csv_info, order: int):
             orig_url = url
             if '.mp4' in url:
-                _file_name = f'{_user_info.save_path + os.sep}{prefix}_{_user_info.count + order}.mp4'
+                _file_name = f'{_user_info.save_path + os.sep}{prefix}.mp4'
             else:
                 try:
-                    _file_name = f'{_user_info.save_path + os.sep}{prefix}_{_user_info.count + order}.{img_format}'
-                    url += f'?format={img_format}&name=4096x4096'
+                    _file_name = f'{_user_info.save_path + os.sep}{prefix}.{orig_url.split('.')[-1]}'
+                    origSizeUrl = twing_url.get_origin_url(url)
+                    if origSizeUrl != False: 
+                        url = origSizeUrl
                 except Exception as e:
                     print(url)
                     return False
