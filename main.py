@@ -16,7 +16,8 @@ from md_gen import md_gen
 from cache_gen import cache_gen
 from url_utils import quote_url
 
-max_concurrent_requests = 1     #最大并发数量，默认为8，对自己网络有自信的可以调高; 遇到多次下载失败时适当降低
+max_concurrent_requests = 8     #最大并发数量，默认为8，对自己网络有自信的可以调高; 遇到多次下载失败时适当降低
+MAX_DOWNLOAD_CNT = 10000 # 每次最多下载10000张
 
 def del_special_char(string):
     string = re.sub(r'[^\u4e00-\u9fa5\u0030-\u0039\u0041-\u005a\u0061-\u007a\u3040-\u31FF\.]', '', string)
@@ -239,10 +240,10 @@ def get_download_url(_user_info):
                         if 'retweeted_status_result' not in a : #判断是否为转推,以及是否获取转推
                             name = _user_info.name
                             screen_name = _user_info.screen_name
-                            if has_likes:
-                                a2 = i[x_label]['itemContent']['tweet_results']['result']['core']['user_results']['result']['legacy']
-                                name = a2['name']
-                                screen_name = a2['screen_name']
+                            # if has_likes:
+                            #     a2 = i[x_label]['itemContent']['tweet_results']['result']['core']['user_results']['result']['legacy']
+                            #     name = a2['name']
+                            #     screen_name = a2['screen_name']
                             if 'extended_entities' in a:
                                 twi_tags = ''
                             for tag in a['entities']['hashtags']:
@@ -385,15 +386,10 @@ def download_control(_user_info):
                 _file_name = f'{_user_info.save_path + os.sep}{prefix}.mp4'
             else:
                 try:
-                    if orig_format:
-                        url += f'?name=orig'
-                        _file_name = f'{_user_info.save_path + os.sep}{prefix}_{_user_info.count + order}.{csv_info[5][-3:]}' # 根据图片 url 获取原始格式
-                    else: # 指定格式时，先使用 name=orig，404 则切回 name=4096x4096，以保证最大尺寸
-                        _file_name = f'{_user_info.save_path + os.sep}{prefix}_{_user_info.count + order}.{img_format}'
-                        if img_format != 'png':
-                            url += f'?format=jpg&name=4096x4096'
-                        else:
-                            url += f'?format=png&name=4096x4096'
+                    _file_name = f'{_user_info.save_path + os.sep}{prefix}.{orig_url.split('.')[-1]}'
+                    origSizeUrl = twing_url.get_origin_url(url)
+                    if origSizeUrl != False: 
+                        url = origSizeUrl
                 except Exception as e:
                     print(url)
                     return False
@@ -402,12 +398,13 @@ def download_control(_user_info):
             if md_output: # 在下载完毕之前先输出到 Markdown，以尽可能保证高并发下载也能得到正确的推文顺序。
                 md_file.media_tweet_input(csv_info, prefix)
             count = 0
-            while True:
+            
+            for i in range(MAX_DOWNLOAD_CNT):
                 try:
                     async with semaphore:
                         async with httpx.AsyncClient(proxy=proxies) as client:
                             global down_count
-                            response = await client.get(quote_url(url), timeout=(3.05, 16))        #如果出现第五次或以上的下载失败,且确认不是网络问题,可以适当降低最大并发数量
+                            response = await client.get(quote_url(url), timeout=(60, 60))        #如果出现第五次或以上的下载失败,且确认不是网络问题,可以适当降低最大并发数量
                             if response.status_code == 404:
                                 raise Exception('404')
                             down_count += 1
