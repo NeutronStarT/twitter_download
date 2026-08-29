@@ -3,6 +3,32 @@
 
 支持排除转推内容 & 多用户爬取 & 时间范围限制 & 按Tag获取 & 纯文本获取 & 高级搜索 & 评论区下载
 
+--- 
+## Disclaimer / 免责声明
+
+> **EN**
+> 
+> 1. This project is strictly for programming learning, academic research, and personal practice.
+> 
+> 2. The intellectual property of all media content (images, videos, etc.) downloaded using this tool belongs to the original authors and the respective platforms. Please respect relevant copyrights.
+> 
+> 3. Users must comply with applicable laws, the target platform's Terms of Service, and relevant copyright regulations. Do not use this tool for malicious scraping, copyright infringement, illegal distribution, or other unlawful activities.
+> 
+> 4. The developer assumes no responsibility for any violations, legal disputes, or direct/indirect losses caused by the improper use of this tool. Use at your own risk.
+> 
+
+<br>
+
+> **ZH**
+> 
+> 1. 本项目仅供编程学习交流、学术研究及个人练习使用。
+> 
+> 2. 使用本工具下载的所有媒体内容（图片、视频等）的知识产权均归原作者及所属平台所有，请尊重相关版权。
+> 
+> 3. 请勿将本工具及所获取的数据用于恶意抓取、侵权传播或其他违法用途。
+> 
+> 4. 开发者不对任何因不当使用本工具而导致的违规行为、法律纠纷或直接/间接损失承担责任。请风险自担。
+> 
 ---
 **目前老马加了API的请求次数限制** 
 ``` 
@@ -18,6 +44,16 @@ elif 不包含:
 ```
 
 # Change Log 
+* **2025-08-09** 
+  * 支持获取用户主页内容(头像&banner&简介)--**请直接配置profile_down.py文件并运行**
+
+* **2025-04-26** 
+  * 替换部分失效接口 
+  * `tag_down reply_down`增加`X-Client-Transaction-ID`校验, 请重新运行`pip install -r requirements.txt`安装依赖 
+  * // 目前生成的`transaction-id`仍有小概率失效, 当程序抛出`获取数据失败`时可以尝试重新运行 
+  * 目前`main text_down`似乎未受`X-Client-Transaction-ID`校验影响 
+  * Reference: `https://github.com/iSarabjitDhiman/XClientTransaction`
+
 * **2025-03-03** 
   * 支持下载评论区(指定用户或推文链接)--**请直接配置reply_down.py文件并运行**
 
@@ -73,7 +109,8 @@ elif 不包含:
 git clone https://github.com/caolvchong-top/twitter_download.git 
 cd twitter_download 
 pip3 install -r requirements.txt
-#Python版本须>=3.8
+
+#Python版本须>=3.8  httpx==0.28.1
 ``` 
 **运行** : 
 ``` 
@@ -127,7 +164,7 @@ _filter = ""
 ``` 
 推特高级搜索：https://x.com/search-advanced 
 
-实例参考：https://github.com/caolvchong-top/twitter_download/issues/63#issuecomment-2351039320
+实例参考：https://github.com/caolvchong-top/twitter_download/issues/63#issuecomment-2351039320 & https://github.com/caolvchong-top/twitter_download/issues/106
 
 
 效果预览
