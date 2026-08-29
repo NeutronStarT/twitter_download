@@ -245,16 +245,27 @@ def get_download_url(_user_info):
                             #     a2 = i[x_label]['itemContent']['tweet_results']['result']['core']['user_results']['result']['legacy']
                             #     name = a2['name']
                             #     screen_name = a2['screen_name']
-                            if 'extended_entities' in a:
-                                twi_tags = ''
-                            for tag in a['entities']['hashtags']:
-                                if (len(twi_tags)) == 0:
-                                    twi_tags = '-' 
-                                if len(tag) >= MAX_TAG_LEN:
+                            if 'extended_entities' not in a:
+                                continue
+
+                            twi_tags = ''
+                            for tag in a.get('entities', {}).get('hashtags', []):
+                                if not isinstance(tag, dict):
+                                    continue
+
+                                tag_text = tag.get('text')
+                                if not isinstance(tag_text, str):
+                                    continue
+
+                                tag_text = validateTitle(tag_text)
+                                if not tag_text:
+                                    continue
+
+                                separator = '-' if not twi_tags else ','
+                                if len(twi_tags) + len(separator) + len(tag_text) > MAX_TAG_LEN:
                                     break
-                                twi_tags += validateTitle(tag['text']) + ','
-                            if len(twi_tags) > 0 and twi_tags[-1] == ',':
-                                twi_tags = twi_tags[:-1]
+
+                                twi_tags += separator + tag_text
                             
                             _photo_lst += [(get_heighest_video_quality(_media['video_info']['variants']), f'{file_name_prefix}-{getMediaTwiId(_media)}_p{a_index}-{getMediaUrlId(_media)}-vid{twi_tags}', [tweet_msecs, name, f'@{screen_name}', _media['expanded_url'], 'Video', get_heighest_video_quality(_media['video_info']['variants']), '', a['full_text']] + frr) if 'video_info' in _media and has_video else (_media['media_url_https'], f'{file_name_prefix}-{getMediaTwiId(_media)}_p{a_index}-{getMediaUrlId(_media)}-img{twi_tags}', [tweet_msecs, name, f'@{screen_name}', _media['expanded_url'], 'Image', _media['media_url_https'], '', a['full_text']] + frr) for a_index, _media in enumerate(a['extended_entities']['media'])]
 
